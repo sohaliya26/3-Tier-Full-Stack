@@ -1,0 +1,71 @@
+pipeline {
+    agent any
+    tools{
+        nodejs 'node21'
+    }
+    environment {
+        SCANNER_HOME= tool 'sonar-scanner'
+    }
+
+    stages {
+        stage('git checkout') {
+            steps {
+               git branch: 'main', url: 'https://github.com/sohaliya26/3-Tier-Full-Stack.git'
+            }
+        }
+        stage('install dependencies') {
+            steps {
+               sh "npm install"
+            }
+        }
+        stage('unit test') {
+            steps {
+                 sh "npm test"
+            }
+        }
+        stage('trivy fs scan') {
+            steps {
+                sh "trivy fs --format table -o fs-report.html ."
+            }
+        }
+        stage('sonarqube') {
+            steps {
+                withSonarQubeEnv('sonar') {
+                    sh "$SCANNER_HOME/bin/sonar-scanner -Dsonar.projectKey=Campground -Dsonar.projectName=Campground"
+                }
+            }
+        }
+        stage('docker build & tag') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'dockerhub', toolName: 'docker') {
+                        sh "docker build -t sohaliya/camp:latest ."
+                    }
+                }
+            }
+        }
+        stage('trivy image scan') {
+            steps {
+                sh "trivy image --format table -o fs-report.html sohaliya/camp:latest"
+            }
+        }
+        stage('docker push image ') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'dockerhub', toolName: 'docker') {
+                        sh "docker push -t sohaliya/camp:latest"
+                    }
+                }
+            }
+        }
+        stage('docker Deploy Dev ') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'dockerhub', toolName: 'docker') {
+                        sh "docker run -d -p 3000:3000 sohaliya/camp:latest"
+                    }
+                }
+            }
+        }
+    }
+}
